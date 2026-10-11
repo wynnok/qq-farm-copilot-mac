@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 DEFAULT_TEMPLATE_PLATFORM = 'qq'
@@ -19,6 +20,19 @@ def normalize_template_platform(platform: str | None) -> str:
 def project_root() -> Path:
     """返回项目根目录。"""
     return Path(__file__).resolve().parents[1]
+
+
+def resolve_template_file(file_path: str | Path) -> Path:
+    """优先使用当前宿主实测的模板，保留 QQ/微信业务平台字段。"""
+    path = Path(file_path)
+    root = project_root()
+    if not path.is_absolute():
+        path = root / path
+    if sys.platform == 'darwin' and path.is_relative_to(root / 'templates'):
+        mac_path = root / 'templates' / 'macos' / path.relative_to(root / 'templates')
+        if mac_path.is_file():
+            return mac_path
+    return path
 
 
 def template_root(base_dir: str = 'templates') -> Path:

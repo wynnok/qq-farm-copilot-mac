@@ -2,6 +2,7 @@
 
 import ctypes
 import os
+import sys
 import threading
 import time
 from ctypes import wintypes
@@ -112,8 +113,14 @@ class ScreenCapture:
             'height': height,
         }
         try:
+            if sys.platform == 'darwin':
+                from core.platform.macos_native import require_screen_capture
+
+                require_screen_capture()
             screenshot = self._get_mss_instance().grab(monitor)
             image = Image.frombytes('RGB', screenshot.size, screenshot.bgra, 'raw', 'BGRX')
+            if sys.platform == 'darwin' and image.size != (width, height):
+                image = image.resize((width, height), Image.Resampling.LANCZOS)
             return image
         except Exception as e:
             logger.error(f'截屏失败: {e}')
@@ -255,10 +262,27 @@ class ScreenCapture:
 
     def capture_window_print(self, hwnd: int) -> Image.Image | None:
         """后台截图：使用 PrintWindow 读取窗口位图。"""
+        if sys.platform == 'darwin':
+            from core.platform.macos_native import capture_window
+            from core.platform.window_manager import WindowManager
+
+            try:
+                image = capture_window(hwnd)
+            except WindowCaptureError as exc:
+                logger.warning(str(exc))
+                self._record_print_failure(str(exc))
+                return None
+            self._reset_print_failure_state()
+            title = WindowManager()._title_height()
+            return image.crop((0, title, image.width, image.height))
         return self._capture_print_window(hwnd, crop_to_client=True, log_prefix='PrintWindow截屏失败')
 
     def capture_window_print_full(self, hwnd: int) -> Image.Image | None:
         """后台截图：使用 PrintWindow 读取窗口位图（含标题栏/菜单栏，不裁剪为客户区）。"""
+        if sys.platform == 'darwin':
+            from core.platform.macos_native import capture_window
+
+            return capture_window(hwnd)
         return self._capture_print_window(hwnd, crop_to_client=False, log_prefix='PrintWindow整窗截屏失败')
 
     def _reset_print_failure_state(self) -> None:
@@ -326,6 +350,8 @@ class ScreenCapture:
 
     def capture(self, rect: tuple[int, int, int, int], hwnd: int | None = None) -> Image.Image | None:
         """按运行模式截图。"""
+        if sys.platform == 'darwin' and hwnd:
+            return self.capture_window_print(hwnd)
         return self._capture_by_mode(rect, int(hwnd or 0))
 
     @DecoratorConfig.when(RUN_MODE=RunMode.BACKGROUND)

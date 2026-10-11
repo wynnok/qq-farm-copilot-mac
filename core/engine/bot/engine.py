@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
 import io
 import multiprocessing as mp
 import queue
@@ -468,7 +467,7 @@ class BotEngine(QObject):
             cached = self._window_manager.get_cached_window()
             if cached:
                 hwnd = int(cached.hwnd or 0)
-                still_alive = bool(ctypes.windll.user32.IsWindow(hwnd)) if hwnd > 0 else False
+                still_alive = self._window_manager.is_window_alive(hwnd)
                 platform_ok = self._window_manager._matches_platform(str(cached.process_name or ''), platform_value)
                 if not still_alive or not platform_ok:
                     logger.info(

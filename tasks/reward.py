@@ -80,7 +80,10 @@ class TaskReward(TaskBase):
                     BTN_SHARE_YELLOW, offset=30, interval=3, static=False
                 ):
                     self.ui.device.sleep(2)
-                    if not press_escape():
+                    if not press_escape(
+                        hwnd=self.engine.window_manager.get_window_handle(),
+                        run_mode=self.config.safety.run_mode,
+                    ):
                         logger.warning('奖励流程: 发送 ESC 失败')
                     continue
                 if platform_value != 'wechat' and self.ui.appear_then_click(

@@ -53,7 +53,10 @@ class TaskShare(TaskBase):
             if self.ui.appear_then_click(BTN_SHARE_GREEN, offset=30, interval=3, static=False):
                 self.ui.device.sleep(1 + times * 2)
                 times += 1
-                if not press_escape():
+                if not press_escape(
+                    hwnd=self.engine.window_manager.get_window_handle(),
+                    run_mode=self.config.safety.run_mode,
+                ):
                     logger.warning('每日分享: 发送 ESC 失败')
                 continue
         return

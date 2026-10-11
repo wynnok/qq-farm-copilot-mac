@@ -64,7 +64,7 @@
 
 - `main`：农场主流程（收获维护、神秘商人、播种、施肥、扩建、升级）
 - `friend`：独立好友任务（支持 `features.blacklist`、`features.steal_stats`、`features.help_only_guard_dog`，以及偷菜/帮忙各自的 `enabled_time_range` 与 `limit_count`；主界面仅显示黑名单条目数，详情弹窗可维护名单）
-- `grass`：自动种草任务（默认关闭；依次访问好友农场，先帮忙（若需要），点击 `1-1` 地块打开弹窗后拖拽草种到全部地块；支持 `features.skip_probability: float`，默认 `0.2`，`1` 与 `0` 时不跳过，介于 `0` 与 `1` 之间才按概率跳过）
+- `grass`：自动种草任务（默认关闭；依次访问好友农场，先帮忙（若需要），从 `1-1` 开始检查地块，找到草/结束图标后拖拽草种到全部地块（成熟作物不显示草图标）；支持 `features.skip_probability: float`，默认 `0.2`，`1` 与 `0` 时不跳过，介于 `0` 与 `1` 之间才按概率跳过）
 - `share`：独立分享任务（仅支持微信平台，通常配合每日触发）
 - `reward`：独立任务奖励领取（默认每 6 小时执行一次）
 - `gift`：物品领取任务（QQSVIP礼包、商城礼包、月卡领取（如有）、可选邮件领取；支持分项开关）
@@ -87,7 +87,7 @@
 
 ## 环境要求
 
-- Windows 10/11
+- Windows 10/11 或 macOS 14+（Apple Silicon，源码运行；当前 macOS 27 已实测）
 - PC 端手动打开 QQ 农场
 
 ## 下载安装运行
@@ -107,18 +107,44 @@
 
 ### 方式二：源码运行
 
-1. 安装 Python（建议 `3.10`）。
+1. 安装 `uv`，使用 Python `3.10`。所有依赖与环境位于项目内。
 2. 在项目根目录执行：
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-python main.py
+uv sync --python 3.10
+uv run main.py
 ```
 
-说明：`requirements.txt` 已默认配置清华源（`pypi.tuna.tsinghua.edu.cn`）。
+`uv.lock` 锁定依赖，`uv sync` 按操作系统安装对应的平台依赖。
+
+### macOS / Apple Silicon
+
+在项目根目录运行（将 uv 管理的 Python 也放在项目内）：
+
+```bash
+UV_PYTHON_INSTALL_DIR="$PWD/.uv-python" uv sync --python 3.10
+uv run main.py
+```
+
+- 手动在 QQ Mac 客户端打开“QQ经典农场”小程序，设置平台为 QQ，窗口关键词与实际标题一致。
+- 在系统设置 → 隐私与安全性中，为启动程序的终端或 Codex 开启“辅助功能”和“屏幕与系统音频录制”；授权后重启程序。全局 F9/F10 还需要允许输入监控，否则快捷键仅在助手窗口内生效；Mac 键盘可能需同时按 Fn。
+- Mac 可选择后台模式：QQ 窗口被其他窗口覆盖时可继续点击与拖拽，不抢前台焦点或系统鼠标。需保持桌面解锁、农场窗口未最小化；暂不支持透明隐藏或虚拟桌面移动。GUI 同时运行一个实例，保留独立配置与串行任务。前台模式会使用系统鼠标。
+- 后台输入使用窗口所属 PID 定向事件及私有 `CGEventSetWindowLocation` 接口，已在当前 macOS 27 的 QQ Mac 小程序实测；系统更新后需重新验证，接口不可用时会明确报错。
+- 种草保留 24 格网格算法；QQ Mac 单侧锚点使用实测间距 `(-369,39)`。从 `1-1`、`2-2` 开始检查现有网格，成熟作物不显示草图标时继续检查其他地块，确认弹窗后才拖拽；普通与四格合并作物均按生长阶段处理。
+- 桌面锁定后任务会明确停止并提示解锁，不会把点击发送到锁屏界面。窗口移动/缩放后，每次截图都会同步当前内容区与输入坐标。
+- Mac GUI 按 Qt 逻辑尺寸布局，默认大小限制在屏幕工作区内；状态页与标签栏支持滚动，缩小窗口时保留完整文字高度。
+- Retina 截图先转换到逻辑点，再归一化为原算法的 `540×960`；点击与拖拽按实际内容区比例反向映射。窗口会按屏幕工作区调整，并检查内容区比例。
+- 窗口截图使用 Apple ScreenCaptureKit 的 `SCScreenshotManager`，直接读取目标窗口并显式指定逻辑尺寸，不依赖旧的 `CGWindowListCreateImage`。
+- 标题栏裁剪高度来自 `configs/nonclient_metrics.json` 的 `macos.title_height`（逻辑点，当前 QQ Mac 实测默认 40）。源码运行会复制到 `.dev_appdata/QQFarmCopilot/configs/nonclient_metrics.json`，校准时修改此用户副本并重启。截图预览应只包含游戏内容。
+- Mac 源码运行配置、日志、截图、OCR 模型缓存在项目 `.dev_appdata/QQFarmCopilot/` 内。
+- Mac 实测的背景树和左侧地块锚点模板放在 `templates/macos/qq/btn/`，仅覆盖宿主为 macOS 时的对应资源，Windows 继续使用原模板；定位、地块网格与任务算法保持原实现。
+- QQ Mac 的辅助功能树按需加载。窗口后端按 [Electron 的辅助功能约定](https://github.com/electron/electron/blob/main/docs/tutorial/accessibility.md) 开启目标进程的 `AXManualAccessibility`，等待真实窗口节点就绪后再调整尺寸，不修改系统权限。
+- 自动拉起/重启需要能直接打开小程序的 `.webloc` 启动文件；设置中可手动填写 `.app` 路径，但打开 QQ 客户端本身不等于打开农场。没有有效的小程序启动入口时，应手动打开窗口并关闭定时重启任务。
+- 自动恢复尝试使用 Mac 辅助功能树中的“一键修复”和“确认”。客户端未暴露相应控件或 Mac 模板不同，需要基于实际画面校准，不能视为已验证功能。
+
+运行迁移回归检查：`uv run pytest`。
+
+真实 Mac GUI 布局检查（不启动农场任务）：`QQFARM_NATIVE_GUI_TEST=1 uv run pytest tests/test_gui_layout.py`。
 
 
 ### VSCode 调试使用独立实例目录
@@ -126,7 +152,7 @@ python main.py
 - 在 VSCode `launch.json` 的 `env` 设置 `QFARM_DEV=true`。
 - 开启后实例元数据与实例目录会隔离到项目内：`.dev_appdata/QQFarmCopilot/`。
 - 调试与发布版都使用实例配置路径：`<instances>/<instance_id>/configs/config.json`。
-- 设置 `QFARM_DEV=false`（或不设置）后，实例目录恢复到 `%APPDATA%\QQFarmCopilot\instances\`。
+- Windows 设置 `QFARM_DEV=false`（或不设置）后，实例目录恢复到 `%APPDATA%\QQFarmCopilot\instances\`；macOS 源码运行仍保存在项目内。
 
 ### 首次运行建议检查
 

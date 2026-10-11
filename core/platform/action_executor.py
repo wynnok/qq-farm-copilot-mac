@@ -3,6 +3,7 @@
 import ctypes
 import math
 import random
+import sys
 import time
 from ctypes import wintypes
 
@@ -21,11 +22,13 @@ MK_LBUTTON = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 
-user32 = ctypes.windll.user32
+user32 = ctypes.windll.user32 if sys.platform == 'win32' else None
 
 
 class ActionExecutor:
     """负责点击/拖拽执行，优先后台消息，失败回退前台。"""
+
+    _mac_dragging = False
 
     def __init__(
         self,
@@ -131,6 +134,11 @@ class ActionExecutor:
         """后台消息点击。"""
         if not self._hwnd:
             return False
+        if sys.platform == 'darwin':
+            if not self.move_abs(abs_x, abs_y) or not self.mouse_down():
+                return False
+            time.sleep(0.03)
+            return self.mouse_up()
         client = self._screen_to_client(abs_x, abs_y)
         if not client:
             return False
@@ -147,11 +155,23 @@ class ActionExecutor:
     @staticmethod
     def _set_cursor_pos(abs_x: int, abs_y: int) -> bool:
         """将系统鼠标移动到绝对坐标。"""
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_mouse
+
+            event_type = Quartz.kCGEventLeftMouseDragged if ActionExecutor._mac_dragging else Quartz.kCGEventMouseMoved
+            return post_mouse(event_type, int(abs_x), int(abs_y))
         return bool(user32.SetCursorPos(int(abs_x), int(abs_y)))
 
     @staticmethod
     def _get_cursor_pos() -> tuple[int, int]:
         """读取当前鼠标绝对坐标。"""
+        if sys.platform == 'darwin':
+            import Quartz
+
+            point = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+            return round(point.x), round(point.y)
         point = wintypes.POINT()
         ok = bool(user32.GetCursorPos(ctypes.byref(point)))
         if not ok:
@@ -183,12 +203,31 @@ class ActionExecutor:
     @staticmethod
     def _mouse_left_down_foreground() -> bool:
         """前台模式按下鼠标左键。"""
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_mouse
+
+            x, y = ActionExecutor._get_cursor_pos()
+            ok = post_mouse(Quartz.kCGEventLeftMouseDown, x, y)
+            ActionExecutor._mac_dragging = ok
+            return ok
         user32.mouse_event(int(MOUSEEVENTF_LEFTDOWN), 0, 0, 0, 0)
         return True
 
     @staticmethod
     def _mouse_left_up_foreground() -> bool:
         """前台模式释放鼠标左键。"""
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_mouse
+
+            x, y = ActionExecutor._get_cursor_pos()
+            try:
+                return post_mouse(Quartz.kCGEventLeftMouseUp, x, y)
+            finally:
+                ActionExecutor._mac_dragging = False
         user32.mouse_event(int(MOUSEEVENTF_LEFTUP), 0, 0, 0, 0)
         return True
 
@@ -209,6 +248,12 @@ class ActionExecutor:
 
     @DecoratorConfig.when(RUN_MODE=RunMode.FOREGROUND)
     def _click_by_mode(self, target_x: int, target_y: int) -> bool:
+        if sys.platform == 'darwin' and self._hwnd:
+            from core.platform.macos_window_manager import WindowManager
+
+            if not WindowManager.activate_window_handle(self._hwnd):
+                return False
+            time.sleep(0.05)
         return self._click_foreground(int(target_x), int(target_y))
 
     def click_absolute(
@@ -263,6 +308,18 @@ class ActionExecutor:
     def _move_by_mode(self, abs_x: int, abs_y: int, duration: float = 0.0) -> bool:
         if not self._hwnd:
             return False
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_window_mouse
+
+            kind = Quartz.kCGEventLeftMouseDragged if self._bg_dragging else Quartz.kCGEventMouseMoved
+            if not post_window_mouse(self._hwnd, kind, abs_x, abs_y):
+                return False
+            self._bg_last_client_pos = (abs_x, abs_y)
+            if duration > 0:
+                time.sleep(float(duration))
+            return True
         client = self._screen_to_client(abs_x, abs_y)
         if not client:
             return False
@@ -277,6 +334,11 @@ class ActionExecutor:
 
     @DecoratorConfig.when(RUN_MODE=RunMode.FOREGROUND)
     def _move_by_mode(self, abs_x: int, abs_y: int, duration: float = 0.0) -> bool:
+        if sys.platform == 'darwin' and self._hwnd and not self._mac_dragging:
+            from core.platform.macos_window_manager import WindowManager
+
+            if not WindowManager.activate_window_handle(self._hwnd):
+                return False
         return self._move_cursor_foreground(int(abs_x), int(abs_y), duration=max(0.0, float(duration)))
 
     def mouse_down(self) -> bool:
@@ -291,6 +353,13 @@ class ActionExecutor:
     def _mouse_down_by_mode(self) -> bool:
         if not self._hwnd or self._bg_last_client_pos is None:
             return False
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_window_mouse
+
+            self._bg_dragging = post_window_mouse(self._hwnd, Quartz.kCGEventLeftMouseDown, *self._bg_last_client_pos)
+            return self._bg_dragging
         cx, cy = self._bg_last_client_pos
         lparam = self._make_lparam(cx, cy)
         user32.SendMessageW(wintypes.HWND(self._hwnd), WM_LBUTTONDOWN, MK_LBUTTON, lparam)
@@ -313,6 +382,15 @@ class ActionExecutor:
     def _mouse_up_by_mode(self) -> bool:
         if not self._hwnd or self._bg_last_client_pos is None:
             return False
+        if sys.platform == 'darwin':
+            import Quartz
+
+            from core.platform.macos_native import post_window_mouse
+
+            try:
+                return post_window_mouse(self._hwnd, Quartz.kCGEventLeftMouseUp, *self._bg_last_client_pos)
+            finally:
+                self._bg_dragging = False
         cx, cy = self._bg_last_client_pos
         lparam = self._make_lparam(cx, cy)
         user32.SendMessageW(wintypes.HWND(self._hwnd), WM_LBUTTONUP, 0, lparam)

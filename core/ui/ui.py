@@ -198,6 +198,12 @@ class UI(Handler):
                 # 导致点击落点偏离实际按钮。
                 button._button_offset = None
                 logger.info(f'页面切换: {page.cn_name} -> {page.parent.cn_name}')
+                if button in (MAIN_GOTO_MENU, MENU_GOTO_MAIN):
+                    # 左侧菜单按钮会随客户端布局上下移动，重新匹配当前帧再点击。
+                    if self.appear_then_click(button, offset=offset, threshold=0.8, static=False, interval=1):
+                        clicked = True
+                        break
+                    continue
                 if button is MENU_GOTO_MAIL:
                     # 邮件入口在菜单面板中会随条目数量上下漂移，改为在扩大 ROI 内
                     # 动态识别模板并点击实际命中位置，避免固定坐标点空。

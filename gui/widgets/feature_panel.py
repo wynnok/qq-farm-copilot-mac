@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from loguru import logger
-
-from PyQt6.QtCore import Qt, QDateTime, QTime, pyqtSignal
+from PyQt6.QtCore import QDateTime, Qt, QTime, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFormLayout,
@@ -275,6 +274,7 @@ class FeaturePanel(QWidget):
         form.setSpacing(10)
         form.setHorizontalSpacing(0)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
     @staticmethod
     def _field_label(text: str, parent: QWidget) -> CaptionLabel:
@@ -349,6 +349,8 @@ class FeaturePanel(QWidget):
 
             if isinstance(value, bool):
                 box = CheckBox('启用', card)
+                box.ensurePolished()
+                box.setMinimumWidth(box.sizeHint().width())
                 box.toggled.connect(self._auto_save)
                 self._bool_widgets[(task_name, feature_name)] = box
                 field = QWidget(card)
@@ -523,8 +525,8 @@ class FeaturePanel(QWidget):
         edit = TimeEdit(parent)
         edit.setDisplayFormat('HH:mm:ss')
         edit.setSymbolVisible(False)
-        edit.setMinimumWidth(0)
-        edit.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        edit.setMinimumWidth(edit.sizeHint().width())
+        edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return edit
 
     @staticmethod
@@ -589,7 +591,7 @@ class FeaturePanel(QWidget):
         folder = instance_screenshots_dir(self.instance_id) / 'merchant'
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            os.startfile(str(folder))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
         except Exception as exc:
             logger.warning(f'打开神秘商人截图目录失败: {exc}')
 

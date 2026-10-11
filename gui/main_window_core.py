@@ -13,12 +13,14 @@ from html import escape, unescape
 from pathlib import Path
 from typing import Any
 
-import keyboard
+if sys.platform == 'win32':
+    import keyboard
 from PIL import Image
 from PyQt6.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -42,6 +44,7 @@ from qfluentwidgets import (
     MessageBoxBase,
     NavigationItemPosition,
     PushButton,
+    ScrollArea,
     SplashScreen,
     SubtitleLabel,
     TabWidget,
@@ -347,8 +350,22 @@ class MainWindow(FluentWindow):
         self._update_check_timer.start()
         QTimer.singleShot(0, self._check_updates_on_startup)
 
-        keyboard.add_hotkey('F9', self._on_pause)
-        keyboard.add_hotkey('F10', self._on_stop)
+        if sys.platform == 'darwin':
+            from PyQt6.QtGui import QKeySequence, QShortcut
+
+            from core.platform.macos_hotkeys import MacHotkeys
+
+            self._mac_hotkeys = MacHotkeys(self)
+            self._mac_hotkeys.pause_requested.connect(self._on_pause)
+            self._mac_hotkeys.stop_requested.connect(self._on_stop)
+            if not self._mac_hotkeys.active:
+                self._pause_shortcut = QShortcut(QKeySequence('F9'), self)
+                self._pause_shortcut.activated.connect(self._on_pause)
+                self._stop_shortcut = QShortcut(QKeySequence('F10'), self)
+                self._stop_shortcut.activated.connect(self._on_stop)
+        else:
+            keyboard.add_hotkey('F9', self._on_pause)
+            keyboard.add_hotkey('F10', self._on_stop)
 
     def _build_ui(self) -> None:
         self.setWindowTitle(APP_WINDOW_TITLE)
@@ -459,6 +476,12 @@ class MainWindow(FluentWindow):
 
     @classmethod
     def _to_logical_size(cls, physical_w: int, physical_h: int) -> tuple[int, int]:
+        if sys.platform == 'darwin':
+            screen = QGuiApplication.primaryScreen()
+            if screen is None:
+                return physical_w, physical_h
+            area = screen.availableGeometry()
+            return min(physical_w, area.width()), min(physical_h, area.height())
         scale = cls._screen_scale_factor()
         w = max(1, int(round(float(physical_w) / scale)))
         h = max(1, int(round(float(physical_h) / scale)))
@@ -587,7 +610,9 @@ class MainWindow(FluentWindow):
         layout = QVBoxLayout(self.global_settings_page)
         layout.setContentsMargins(10, 10, 10, 10)
         self.global_settings_panel = GlobalSettingsPanel(self.global_settings_page)
-        self.global_settings_panel.apply_requested.connect(self._apply_global_settings)
+        self.global_settings_panel.apply_requested.connect(
+            self._apply_global_settings, Qt.ConnectionType.QueuedConnection
+        )
         self.global_settings_panel.check_update_requested.connect(self._check_updates_manual)
         self.global_settings_panel.set_values(self._theme_mode, self._mica_enabled, self._log_retention_days)
         self.global_settings_panel.set_version_text(self._current_version)
@@ -951,6 +976,8 @@ class MainWindow(FluentWindow):
         tabs = TabWidget(container)
         tabs.setTabsClosable(False)
         tabs.tabBar.setAddButtonVisible(False)
+        tabs.tabBar.setTabMaximumWidth(150)
+        tabs.tabBar.setScrollable(True)
         status, log, task, feature, settings, land_detail = (
             StatusPanel(),
             LogPanel(),
@@ -960,11 +987,15 @@ class MainWindow(FluentWindow):
             LandDetailPanel(s.config),
         )
 
-        status_page = QWidget(container)
-        sv = QVBoxLayout(status_page)
+        status_page = ScrollArea(container)
+        status_page.setWidgetResizable(True)
+        status_page.setFrameShape(QFrame.Shape.NoFrame)
+        status_content = QWidget(status_page)
+        status_page.setWidget(status_content)
+        sv = QVBoxLayout(status_content)
         sv.setContentsMargins(10, 10, 10, 10)
         sv.addWidget(status)
-        log_card = _StaticElevatedCardWidget(status_page)
+        log_card = _StaticElevatedCardWidget(status_content)
         log_card.setObjectName('statusPageLogCard')
         log_card.setStyleSheet(
             'ElevatedCardWidget#statusPageLogCard { border-radius: 10px; border: 1px solid rgba(100, 116, 139, 0.22); }'
@@ -1224,6 +1255,10 @@ class MainWindow(FluentWindow):
         self._sync_hide_btn(ws)
 
     def _sync_hide_btn(self, ws: Workspace) -> None:
+        if sys.platform == 'darwin':
+            ws.btn_hide.setEnabled(False)
+            ws.btn_hide.setToolTip('macOS 前台运行时需要保持游戏窗口可见')
+            return
         hwnd = ws.engine.get_window_handle()
         has_window = bool(hwnd and hwnd > 0)
         if not has_window:
@@ -1274,6 +1309,13 @@ class MainWindow(FluentWindow):
         if ws is None:
             return
         if ws.start_in_progress or self._is_running_state(ws.state):
+            return
+
+        if sys.platform == 'darwin' and any(
+            other.instance_id != iid and (other.start_in_progress or self._is_running_state(other.state))
+            for other in self._workspaces.values()
+        ):
+            self._toast('warning', '请先停止其他实例', 'macOS 当前一次只能运行一个实例，避免同一游戏窗口的输入冲突。')
             return
 
         ws.start_in_progress = True
@@ -1626,8 +1668,11 @@ class MainWindow(FluentWindow):
         if hasattr(self, '_update_check_timer'):
             self._update_check_timer.stop()
         try:
-            keyboard.unhook_all_hotkeys()
-            keyboard.unhook_all()
+            if sys.platform == 'darwin':
+                self._mac_hotkeys.close()
+            else:
+                keyboard.unhook_all_hotkeys()
+                keyboard.unhook_all()
         except Exception:
             pass
         self._close_update_check_dialog()

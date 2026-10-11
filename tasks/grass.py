@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import sys
 from typing import TYPE_CHECKING
 
 import cv2
@@ -18,7 +19,6 @@ from core.ui.assets import (
     BTN_GRASS_END,
     BTN_HOME,
     BTN_LAND_LEFT,
-    BTN_LAND_RIGHT,
     BTN_STEAL,
     BTN_VISIT_FIRST,
     MAIN_GOTO_FRIEND,
@@ -61,6 +61,8 @@ PLOT_CLICK_SLEEP_SECONDS = 0.5
 DRAG_MOVE_SLEEP_SECONDS = 0.15
 # 拖拽按下/移动的持续时间（秒）。
 DRAG_DURATION_SECONDS = 0.1
+# QQ Mac 内容归一化到 540x960 后实测的左右边缘间距。
+MACOS_QQ_LAND_ANCHOR_SPAN = (-369, 39)
 
 
 class TaskGrass(TaskBase):
@@ -112,13 +114,11 @@ class TaskGrass(TaskBase):
                 logger.warning('自动种草: 未识别到地块网格，结束')
                 break
 
-            # 4. 点击 1-1 地块打开种草弹窗
-            if not self._open_grass_popup(land_cells=land_cells):
-                logger.info('自动种草: 未打开种草弹窗，结束')
-                break
+            # 4. 从 1-1 开始寻找能打开种草弹窗的地块
+            opened = self._open_grass_popup(land_cells=land_cells)
 
             # 5. 识别种草按钮/种草结束按钮
-            detection = self._detect_grass_or_end()
+            detection = self._detect_grass_or_end() if opened else None
             if detection is None:
                 consecutive_fail_count += 1
                 logger.info(
@@ -175,7 +175,9 @@ class TaskGrass(TaskBase):
                 continue
 
             # 7. 拖拽种草到所有地块
-            self._drag_grass_to_lands(grass_point, land_cells)
+            if not self._drag_grass_to_lands(grass_point, land_cells):
+                self._close_grass_popup()
+                return self.fail('种草拖拽输入失败')
 
             # 关闭弹窗/清空状态，准备切换下一位好友
             self._close_grass_popup()
@@ -264,6 +266,9 @@ class TaskGrass(TaskBase):
                 rows=4,
                 cols=6,
                 start_anchor='right',
+                anchor_span=MACOS_QQ_LAND_ANCHOR_SPAN
+                if sys.platform == 'darwin' and self.config.planting.window_platform.value == 'qq'
+                else None,
             )
             if cells:
                 logger.info(
@@ -287,19 +292,25 @@ class TaskGrass(TaskBase):
         return cells
 
     def _open_grass_popup(self, *, land_cells: list) -> bool:
-        """点击 1-1 地块中心，打开种草弹窗。"""
+        """按网格寻找可种草的地块，以草/结束图标确认弹窗打开。"""
         plot_1_1 = self._locate_1_1_plot_center(land_cells=land_cells)
         if plot_1_1 is None:
             logger.warning('自动种草: 未找到 1-1 地块坐标')
             return False
 
-        x, y = plot_1_1
-        logger.info('自动种草: 点击 1-1 地块 | location=({},{})', x, y)
-        if not self.ui.device.click_point(x, y, desc='点击1-1地块打开种草弹窗'):
-            logger.warning('自动种草: 点击 1-1 地块失败')
-            return False
-        self.ui.device.sleep(PLOT_CLICK_SLEEP_SECONDS)
-        return True
+        candidates = [('1-1', plot_1_1)]
+        # 四格合并作物可能遮挡 1-1；成熟作物也不显示草图标，继续检查其他地块。
+        candidates.extend((cell.label, cell.center) for cell in land_cells if cell.label == '2-2')
+        candidates.extend((cell.label, cell.center) for cell in land_cells if cell.label not in ('1-1', '2-2'))
+        for plot_id, (x, y) in candidates:
+            logger.info('自动种草: 点击地块 {} 打开弹窗 | location=({},{})', plot_id, x, y)
+            if not self.ui.device.click_point(x, y, desc=f'点击地块{plot_id}打开种草弹窗'):
+                return False
+            self.ui.device.sleep(PLOT_CLICK_SLEEP_SECONDS)
+            if self._detect_grass_or_end() is not None:
+                return True
+        logger.warning('自动种草: 点击后未检测到草/结束图标')
+        return False
 
     def _locate_1_1_plot_center(
         self,
@@ -458,24 +469,33 @@ class TaskGrass(TaskBase):
         self,
         grass_point: tuple[int, int],
         land_cells: list,
-    ) -> None:
+    ) -> bool:
         """拖拽种草按钮到所有地块。"""
         cells = sorted(land_cells, key=lambda cell: int(cell.order))
         dragging = False
+        success = True
         try:
             drag_x, drag_y = int(grass_point[0]), int(grass_point[1])
-            self.engine.device.drag_down_point(drag_x, drag_y, duration=DRAG_DURATION_SECONDS)
+            if not self.engine.device.drag_down_point(drag_x, drag_y, duration=DRAG_DURATION_SECONDS):
+                logger.warning('自动种草: 拖拽起手失败')
+                return False
             dragging = True
             self.ui.device.sleep(0.1)
 
             for cell in cells:
                 land_x, land_y = int(cell.center[0]), int(cell.center[1])
-                self.engine.device.drag_move_point(land_x, land_y, duration=DRAG_DURATION_SECONDS)
+                if not self.engine.device.drag_move_point(land_x, land_y, duration=DRAG_DURATION_SECONDS):
+                    success = False
+                    break
                 self.ui.device.sleep(DRAG_MOVE_SLEEP_SECONDS)
         finally:
             if dragging:
-                self.engine.device.drag_up()
-                logger.info('自动种草: 种草完成 | 地块数={}', len(cells))
+                success = bool(self.engine.device.drag_up()) and success
+        if success:
+            logger.info('自动种草: 种草输入完成 | 地块数={}', len(cells))
+        else:
+            logger.warning('自动种草: 拖拽输入失败')
+        return success
 
     def _goto_next_friend(self) -> bool:
         """点击下一位好友。"""

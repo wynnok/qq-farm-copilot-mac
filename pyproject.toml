@@ -40,3 +40,46 @@ ignore = ["F403", "F405", "F811"]
 
 [tool.ruff.format]
 quote-style = "single"
+[project]
+name = "qq-farm-copilot"
+version = "0.1.0"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "keyboard>=0.13.5 ; sys_platform == 'win32'",
+    "loguru>=0.7.0",
+    "mss>=9.0.0",
+    "numpy>=1.26.0,<2",
+    "onepush==1.9.0",
+    "onnxruntime==1.19.2",
+    "opencv-python>=4.9.0,<5",
+    "pillow>=10.0.0",
+    "pyautogui>=0.9.54 ; sys_platform == 'win32'",
+    "pydantic>=2.5.0",
+    "pygetwindow>=0.0.9 ; sys_platform == 'win32'",
+    "pyobjc-framework-applicationservices>=10 ; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa>=10 ; sys_platform == 'darwin'",
+    "pyobjc-framework-quartz>=10 ; sys_platform == 'darwin'",
+    "pyobjc-framework-screencapturekit>=10 ; sys_platform == 'darwin'",
+    "pyqt6==6.10.2",
+    "pyqt6-fluent-widgets==1.11.1",
+    "pyvda==0.5.0 ; sys_platform == 'win32'",
+    "pywin32>=306 ; sys_platform == 'win32'",
+    "pyyaml>=6.0.0",
+    "rapidocr==3.8.1",
+    "uiautomation>=2.0.0 ; sys_platform == 'win32'",
+    "winotify==1.1.0 ; sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.uv]
+package = false
+cache-dir = ".uv-cache"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

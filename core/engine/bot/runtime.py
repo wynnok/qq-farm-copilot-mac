@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import ctypes
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -16,7 +17,6 @@ from core.base.button import Button
 from core.exceptions import WindowNotFoundError
 from core.platform.action_executor import ActionExecutor
 from core.platform.device import Device
-from core.platform.wechat_mouse_guard import WeChatMouseGuard
 from core.platform.window_manager import WindowInfo, WindowManager
 from core.ui.assets import ASSET_NAME_TO_CONST
 from core.ui.page import (
@@ -31,6 +31,7 @@ from utils.template_paths import normalize_template_platform, project_root
 
 if TYPE_CHECKING:
     from core.engine.bot.local_engine import LocalBotEngine
+    from core.platform.wechat_mouse_guard import WeChatMouseGuard
 
 
 class BotRuntimeMixin:
@@ -52,6 +53,10 @@ class BotRuntimeMixin:
 
     def _wechat_mouse_guard(self) -> WeChatMouseGuard | None:
         """返回微信鼠标防占用管理器实例，按需懒加载。"""
+        if sys.platform != 'win32':
+            return None
+        from core.platform.wechat_mouse_guard import WeChatMouseGuard
+
         if not getattr(self, '_mouse_guard', None):
             try:
                 self._mouse_guard = WeChatMouseGuard()
@@ -122,7 +127,7 @@ class BotRuntimeMixin:
         target_hwnd = int(hwnd or 0)
         if target_hwnd <= 0:
             return
-        target_desktop_index = int(getattr(self.config.planting, 'virtual_desktop_index', 0) or 0)
+        target_desktop_index = int(self.config.planting.virtual_desktop_index or 0)
         if target_desktop_index <= 0:
             return
         moved = self.window_manager.move_window_to_virtual_desktop(target_hwnd, target_desktop_index)
@@ -200,6 +205,12 @@ class BotRuntimeMixin:
         cap_h = int(use_rect[3])
         if cap_w <= 0 or cap_h <= 0:
             return int(base_x), int(base_y)
+
+        if sys.platform == 'darwin':
+            return (
+                max(0, min(round(base_x * cap_w / 540), cap_w - 1)),
+                max(0, min(round(base_y * cap_h / 960), cap_h - 1)),
+            )
 
         platform_value = self.config.planting.window_platform.value
         x1, y1, _crop_w, _crop_h = self.window_manager.get_preview_crop_box(cap_w, cap_h, platform_value)
@@ -312,9 +323,10 @@ class BotRuntimeMixin:
         shortcut_path = self._resolve_window_shortcut_path()
         if shortcut_path is None:
             return False, '未配置快捷方式路径'
-        if shortcut_path.suffix.lower() != '.lnk':
-            return False, '快捷方式路径不是 .lnk 文件'
-        if not shortcut_path.is_file():
+        allowed = {'.app', '.webloc'} if sys.platform == 'darwin' else {'.lnk'}
+        if shortcut_path.suffix.lower() not in allowed:
+            return False, '快捷方式类型不支持: ' + ', '.join(sorted(allowed))
+        if not shortcut_path.exists():
             return False, '快捷方式文件不存在'
         return True, ''
 
@@ -371,6 +383,10 @@ class BotRuntimeMixin:
 
     def _click_uia_element_by_name(self, root, name: str, *, desc: str = '') -> bool:
         """在 UIA 控件树中按 Name 查找元素并调用 InvokePattern。"""
+        if sys.platform == 'darwin':
+            from core.platform.macos_native import press_named_element
+
+            return press_named_element(root, name)
         display = desc or name
 
         def _search(element, depth: int = 0, max_depth: int = 12):
@@ -553,6 +569,8 @@ class BotRuntimeMixin:
 
     def _find_uia_window_by_hwnd(self, hwnd: int):
         """根据 hwnd 找到对应的 UIA 窗口元素。"""
+        if sys.platform == 'darwin':
+            return self.window_manager.accessibility_window(hwnd)
         uia = self._ensure_uiautomation()
         try:
             return uia.ControlFromHandle(hwnd)
@@ -636,7 +654,7 @@ class BotRuntimeMixin:
         # 整窗截图坐标原点是窗口外框左上角；_click_background 需要屏幕绝对坐标。
         abs_x = window_rect[0] + click_x
         abs_y = window_rect[1] + click_y
-        ok = executor._click_background(abs_x, abs_y)
+        ok = executor._click_by_mode(abs_x, abs_y)
         if not ok:
             logger.error(f'{desc} 失败: 后台点击未成功')
             return False
@@ -672,15 +690,9 @@ class BotRuntimeMixin:
             return None, False
 
         shortcut_text = str(shortcut_path)
-        if shortcut_path.suffix.lower() != '.lnk':
-            logger.warning(f'窗口快捷方式路径不是 .lnk: {shortcut_text}')
-            if emit_hint:
-                logger.warning('快捷方式路径无效：仅支持 .lnk 文件')
-            return None, False
-        if not shortcut_path.is_file():
-            logger.warning(f'窗口快捷方式不存在: {shortcut_text}')
-            if emit_hint:
-                logger.warning('快捷方式文件不存在，请在设置中重新选择')
+        valid, reason = self._validate_window_shortcut_for_recovery()
+        if not valid:
+            logger.warning('窗口启动路径无效: {}', reason)
             return None, False
 
         baseline_hwnds = {int(info.hwnd) for info in self._list_platform_windows_silent() if int(info.hwnd) > 0}
@@ -694,7 +706,10 @@ class BotRuntimeMixin:
             try:
                 if emit_hint:
                     logger.info(f'未找到窗口，尝试通过快捷方式启动: {shortcut_text}')
-                os.startfile(shortcut_text)
+                if sys.platform == 'darwin':
+                    subprocess.run(['open', shortcut_text], check=True)
+                else:
+                    os.startfile(shortcut_text)
                 self._last_window_shortcut_launch_at = now
                 launched_this_round = True
                 logger.info(f'已触发快捷方式启动: {shortcut_text}')
@@ -746,7 +761,7 @@ class BotRuntimeMixin:
         if target_hwnd <= 0:
             return False
         try:
-            return bool(ctypes.windll.user32.IsWindow(target_hwnd))
+            return WindowManager.is_window_alive(target_hwnd)
         except Exception:
             return False
 
@@ -766,7 +781,8 @@ class BotRuntimeMixin:
             return True
 
         try:
-            ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0)  # WM_CLOSE
+            if not self.window_manager.close_window(target_hwnd):
+                return False
         except Exception as exc:
             logger.warning(f'关闭窗口失败: hwnd=0x{target_hwnd:X}, {exc}')
             return False
@@ -830,7 +846,10 @@ class BotRuntimeMixin:
         pos_value = self.config.planting.window_position.value
         screen_index = int(self.config.planting.window_screen_index)
         platform_value = self.config.planting.window_platform.value
-        self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+        resized = self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+        if sys.platform == 'darwin' and not resized:
+            logger.error('macOS 窗口尺寸校准失败，停止初始化')
+            return None, None
         self._move_window_to_configured_virtual_desktop(window.hwnd)
         self._wait_window_capture_stable(timeout=0.5, interval=0.04)
 
@@ -1052,7 +1071,10 @@ class BotRuntimeMixin:
             current_hwnd = int(getattr(window, 'hwnd', 0) or 0)
             if current_hwnd > 0 and current_hwnd != last_window_hwnd:
                 logger.info(f'启动窗口句柄变化: 0x{last_window_hwnd:X} -> 0x{current_hwnd:X}，重新校准窗口尺寸')
-                self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+                resized = self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+                if sys.platform == 'darwin' and not resized:
+                    logger.error('macOS 窗口尺寸校准失败，停止启动')
+                    return False
                 self._move_window_to_configured_virtual_desktop(current_hwnd)
                 self._wait_window_capture_stable(timeout=0.5, interval=0.04)
                 refreshed = self.window_manager.refresh_cached_window_info() or self._find_window_silent()
@@ -1116,6 +1138,20 @@ class BotRuntimeMixin:
 
     def start(self) -> bool:
         """启动当前模块的主流程。"""
+        if sys.platform == 'darwin':
+            from core.platform.macos_native import (
+                require_accessibility,
+                require_screen_capture,
+                require_unlocked_session,
+            )
+
+            try:
+                require_accessibility()
+                require_screen_capture()
+                require_unlocked_session()
+            except RuntimeError as exc:
+                logger.error(str(exc))
+                return False
         engine = self._engine()
         if engine._executor_running():
             logger.warning('上一轮任务仍在停止中，请稍候再启动')
@@ -1155,7 +1191,7 @@ class BotRuntimeMixin:
                         raise WindowNotFoundError(
                             '未找到QQ农场窗口，快捷方式启动后等待超时，请检查快捷方式是否可正常打开小程序'
                         )
-                    raise WindowNotFoundError('未找到QQ农场窗口，且快捷方式路径无效，请在设置中重新选择 .lnk 文件')
+                    raise WindowNotFoundError('未找到QQ农场窗口，且启动路径无效，请在设置中重新选择启动文件')
                 raise WindowNotFoundError('未找到QQ农场窗口，请先打开QQ农场小程序或配置快捷方式路径')
             except Exception as exc:
                 attempt += 1
@@ -1184,7 +1220,10 @@ class BotRuntimeMixin:
         pos_value = self.config.planting.window_position.value
         screen_index = int(self.config.planting.window_screen_index)
         platform_value = self.config.planting.window_platform.value
-        self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+        resized = self.window_manager.resize_window(pos_value, platform_value, screen_index=screen_index)
+        if sys.platform == 'darwin' and not resized:
+            logger.error('macOS 窗口尺寸校准失败，停止启动')
+            return False
         self._move_window_to_configured_virtual_desktop(window.hwnd)
         self._wait_window_capture_stable(timeout=0.5, interval=0.04)
         # 统一走 _find_window_silent（已包含平台过滤 + index 规则），避免非 auto 分支绕过平台筛选。
@@ -1311,7 +1350,7 @@ class BotRuntimeMixin:
         window = self.window_manager.get_cached_window()
         if window:
             hwnd = int(window.hwnd or 0)
-            still_alive = bool(ctypes.windll.user32.IsWindow(hwnd)) if hwnd > 0 else False
+            still_alive = self.window_manager.is_window_alive(hwnd)
             if not still_alive:
                 window = None
         if not window:

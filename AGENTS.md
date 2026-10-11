@@ -1,5 +1,19 @@
 # AGENTS
 
+## Agent skills
+
+### Issue tracker
+
+问题与规格使用 `wynnok/qq-farm-copilot-mac` 的 GitHub Issues。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用五个默认同名 triage 标签。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+采用 single-context 布局：根目录 `GLOSSARY.md` 与 `docs/adr/`。见 `docs/agents/domain.md`。
+
 本文件定义本仓库内自动化/编码代理的工作约定。以当前代码实现为准。
 - 一切修改以工作区最新内容为准。
 - 除非显示说明否则所有回答交互均使用中文。
@@ -15,6 +29,11 @@
 ## 0. 当前状态
 
 - 项目名：`QQ Farm Copilot`
+- 平台：Windows 与 macOS（Apple Silicon）；macOS 使用 Quartz / Accessibility 前台输入或窗口 PID 定向后台输入，截图归一化为 540x960，点击反向映射到屏幕逻辑点。Mac 源码运行数据位于项目 `.dev_appdata/QQFarmCopilot/`。
+- macOS 窗口截图使用 ScreenCaptureKit / SCScreenshotManager（macOS 14+），避免使用已弃用的 CGWindowListCreateImage；窗口恢复后需等待可见状态，短暂截图失败沿用现有连续失败判定策略。
+- macOS 截图前同步当前内容区与 ActionExecutor 坐标；锁屏时停止游戏输入并明确提示解锁。GUI 窗口按 Qt 逻辑尺寸处理，状态页以滚动容器保留文字最小高度。
+- macOS 非客户区：`configs/nonclient_metrics.json -> macos.title_height`（逻辑点，QQ Mac 实测默认 40，其他客户端需要校准）；支持 QQ Mac 窗口被覆盖时的后台点击与拖拽（私有 CGEventSetWindowLocation，当前 macOS 27 已实测）；不支持锁屏输入、最小化后台操作、透明隐藏和虚拟桌面移动；GUI 同时仅允许一个实例运行。
+- macOS 专用模板：`templates/macos/<业务平台>/...` 对应宿主的实测覆盖资源，由 `utils/template_paths.py::resolve_template_file` 选择；已校准 QQ 的背景树和左侧地块锚点，地块网格算法保持原实现；种草在 QQ Mac 单侧锚点使用实测间距 (-369,39)，从 1-1、2-2 开始检查网格并确认草/结束图标；成熟作物不显示草图标时继续寻找其他地块，保留原有拖拽算法。
 - UI 结构：左侧截图预览 + 中间实例运行面板 + 最右侧竖向实例栏
 - 实例纳管操作：`新增 / 删除 / 切换 / 克隆 / 重命名`
 - 调度模式：`TaskExecutor` 单线程串行执行
@@ -152,6 +171,7 @@
 : 依次尝试多个按钮。
 
 - UI 页面跳转开发注意
+: 主页菜单与菜单回主入口随客户端布局上下移动，必须在当前帧重新匹配后点击，不能清除匹配位置后直接使用设计坐标；邮箱入口保持动态 ROI 匹配。
 : 在跳转链路里，点击只代表“发起动作”，不代表“页面已切换”；点击后应继续循环并复检页面状态，确认到达目标页后再结束当前分支。
 
 ## 3.3 TaskExecutor 常用
@@ -194,7 +214,7 @@
 : 独立好友任务，复用 `TaskFriend`；支持 `features.blacklist: list[str]`、`features.steal_stats: bool`、`features.help_only_guard_dog: bool`，以及 `steal/help` 各自的 `enabled_time_range` 与 `limit_count` 配置（功能时段与次数限制在任务调度时段内生效）。
 
 - `grass`
-: 独立自动种草任务，默认关闭，默认 `trigger=daily`、`daily_times=["00:01"]`；进入好友列表后依次访问好友农场，先点击一次帮忙按钮（若存在），再点击 `1-1` 地块打开种草弹窗，识别 `BTN_GRASS` 后将其拖拽到该好友全部 24 个地块；切换下一位好友重复操作，直到识别不到 `BTN_GRASS` 时结束。支持 `features.skip_probability: float`（默认 `0.2`，范围 `0.0-1.0`）：在每次种草前按该概率随机跳过当前好友；`0` 时不跳过，`1` 与 `0` 效果相同（都不跳过），只有介于 `0` 与 `1` 之间的值才会生效。
+: 独立自动种草任务，默认关闭，默认 `trigger=daily`、`daily_times=["00:01"]`；进入好友列表后依次访问好友农场，先点击一次帮忙按钮（若存在），再从 `1-1`、`2-2` 开始按网格寻找种草弹窗（普通和四格合并作物在成熟期均不显示草图标，继续检查其他地块），识别 `BTN_GRASS` 后将其拖拽到该好友全部 24 个地块；切换下一位好友重复操作，直到识别不到 `BTN_GRASS` 时结束。支持 `features.skip_probability: float`（默认 `0.2`，范围 `0.0-1.0`）：在每次种草前按该概率随机跳过当前好友；`0` 时不跳过，`1` 与 `0` 效果相同（都不跳过），只有介于 `0` 与 `1` 之间的值才会生效。
 
 - `share`
 : 独立分享任务，仅执行分享领奖流程（仅支持微信平台；无 `features` 分项开关）。

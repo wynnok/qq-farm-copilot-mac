@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from collections import deque
 from datetime import datetime
@@ -94,6 +95,13 @@ class Device:
         self._wait_screenshot_interval()
         if rect is not None:
             self.rect = rect
+        if sys.platform == 'darwin':
+            from core.platform.macos_native import require_unlocked_session
+
+            require_unlocked_session()
+            self.rect = self.engine.window_manager.get_capture_rect()
+            if self.rect is not None and self.engine.action_executor is not None:
+                self.engine.action_executor.update_window_rect(self.rect)
         if self.rect is None:
             self.image = None
             self.preview_image = None

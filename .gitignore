@@ -13,6 +13,8 @@ build/
 # 虚拟环境
 venv/
 .venv/
+.uv-cache/
+.uv-python/
 env/
 
 # IDE
@@ -28,6 +30,9 @@ screenshots/
 
 # 内部文档
 docs/
+!docs/
+docs/*
+!docs/agents/
 
 # OS
 Thumbs.db

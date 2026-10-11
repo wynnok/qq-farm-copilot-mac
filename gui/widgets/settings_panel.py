@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from loguru import logger
@@ -132,12 +133,18 @@ class SettingsPanel(QWidget):
         self.run_mode.addItem('后台模式', userData=RunMode.BACKGROUND.value)
         self.run_mode.addItem('前台模式', userData=RunMode.FOREGROUND.value)
         env_form.addRow(self._field_label('运行方式', env_card), self.run_mode)
-        run_mode_tip = CaptionLabel('微信后台运行有可能会把窗口拉到前台', env_card)
+        run_mode_tip = CaptionLabel(
+            'macOS 后台模式可操作被覆盖的 QQ 窗口；请保持桌面解锁且农场窗口未最小化。'
+            if sys.platform == 'darwin'
+            else '微信后台运行有可能会把窗口拉到前台',
+            env_card,
+        )
         run_mode_tip.setWordWrap(True)
         run_mode_tip.setStyleSheet('color: #d97706;')
         env_form.addRow(self._field_label('', env_card), run_mode_tip)
 
         self.wechat_mouse_guard = CheckBox('微信鼠标防占用', env_card)
+        self.wechat_mouse_guard.setEnabled(sys.platform == 'win32')
         env_form.addRow(self._field_label('', env_card), self.wechat_mouse_guard)
         wechat_mouse_guard_tip = CaptionLabel(
             '仅对微信窗口生效：启动阶段生效，防止后台点击时鼠标被窗口占用。',
@@ -301,6 +308,7 @@ class SettingsPanel(QWidget):
         notify_form.addRow(self._field_label('异常通知', notify_card), self.notify_exception_enabled)
 
         self.notify_win_toast_enabled = CheckBox('Windows 系统通知', notify_card)
+        self.notify_win_toast_enabled.setEnabled(sys.platform == 'win32')
         notify_form.addRow(self._field_label('本地通知', notify_card), self.notify_win_toast_enabled)
 
         notify_onepush_col = QWidget(notify_card)
@@ -705,6 +713,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self.window_screen.blockSignals(False)
 
     def _refresh_virtual_desktops(self) -> None:
+        self.virtual_desktop.setEnabled(sys.platform == 'win32')
         current = int(self.virtual_desktop.currentData() or self.config.planting.virtual_desktop_index or 0)
         self.virtual_desktop.blockSignals(True)
         self.virtual_desktop.clear()
@@ -775,7 +784,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             self,
             '选择快捷方式',
             start_dir,
-            '快捷方式 (*.lnk)',
+            '启动文件 (*.webloc)' if sys.platform == 'darwin' else '快捷方式 (*.lnk)',
         )
         if not selected:
             return
@@ -806,7 +815,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self._set_combo_data(self.run_mode, c.safety.run_mode.value)
         self.shortcut_path.setText(str(c.window_shortcut_path or ''))
         self.shortcut_launch_delay.setValue(int(c.window_shortcut_launch_delay_seconds))
-        self.wechat_mouse_guard.setChecked(bool(c.wechat_mouse_guard_enabled))
+        self.wechat_mouse_guard.setChecked(bool(c.wechat_mouse_guard_enabled) if sys.platform == 'win32' else False)
         self.window_restart_delay.setValue(int(c.window_restart_delay_seconds))
         self.window_repair_delay.setValue(int(c.window_repair_delay_seconds))
         self.prefer_repair_before_restart.setChecked(bool(c.recovery.prefer_repair_before_restart))

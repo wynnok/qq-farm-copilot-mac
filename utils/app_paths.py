@@ -120,10 +120,12 @@ def is_dev_runtime_enabled() -> bool:
 
 def _default_user_app_dir() -> Path:
     """返回默认用户数据目录（不读取覆盖配置）。"""
-    if is_dev_runtime_enabled():
+    if is_dev_runtime_enabled() or (sys.platform == 'darwin' and not getattr(sys, 'frozen', False)):
         # 开发/调试态目录与发行版隔离，避免 profiles/instances 相互污染。
         return bundled_root_dir() / '.dev_appdata' / APP_DIR_NAME
 
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library' / 'Application Support' / APP_DIR_NAME
     base = os.getenv('APPDATA') or os.getenv('LOCALAPPDATA')
     if base:
         return Path(base) / APP_DIR_NAME
@@ -155,11 +157,11 @@ def user_app_dir() -> Path:
 
 
 def set_user_app_dir_override(path: str | Path) -> Path:
-    """设置下次启动生效的数据目录（写入注册表）。"""
+    """保存下次启动生效的数据目录。"""
     target = _resolve_path(path)
     updated_at = datetime.now().isoformat(timespec='seconds')
     if not write_current_user_string(_REGISTRY_SUBKEY, _REGISTRY_VALUE_USER_APP_DIR, str(target)):
-        raise RuntimeError('写入数据目录注册表失败。')
+        raise RuntimeError('保存数据目录设置失败。')
     write_current_user_string(_REGISTRY_SUBKEY, _REGISTRY_VALUE_USER_APP_DIR_UPDATED_AT, updated_at)
     return target
 

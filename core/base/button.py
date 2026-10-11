@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import weakref
 from functools import cached_property
-from pathlib import Path
 from typing import Callable
 
 import cv2
@@ -13,7 +12,7 @@ import numpy as np
 from loguru import logger
 from PIL import Image, ImageSequence
 
-from utils.template_paths import normalize_template_platform
+from utils.template_paths import normalize_template_platform, resolve_template_file
 
 MatchProvider = Callable[
     ['Button', np.ndarray, int | tuple[int, int, int, int] | tuple[int, int], float, bool],
@@ -158,9 +157,7 @@ class Button:
         file_raw = self._parse_property(self.raw_file)
         file_text = str(file_raw or '').strip()
         if file_text:
-            file_path = Path(file_text)
-            if not file_path.is_absolute():
-                file_path = Path(__file__).resolve().parents[2] / file_text
+            file_path = resolve_template_file(file_text)
             file_path_str = str(file_path)
         else:
             file_path_str = ''
