@@ -81,6 +81,8 @@ class SettingsPanel(QWidget):
         self.level = SpinBox(plant_card)
         self.level.setRange(1, 999)
         self.level_ocr = CheckBox('自动同步', plant_card)
+        self.level_ocr.ensurePolished()
+        self.level_ocr.setMinimumWidth(self.level_ocr.sizeHint().width())
         level_row = QWidget(plant_card)
         level_layout = QHBoxLayout(level_row)
         level_layout.setContentsMargins(0, 0, 0, 0)
@@ -109,13 +111,13 @@ class SettingsPanel(QWidget):
         )
         warehouse_tip.setWordWrap(True)
         warehouse_tip.setStyleSheet('color: #d97706;')
-        plant_form.addRow(self._field_label('', plant_card), warehouse_tip)
+        plant_form.addRow(warehouse_tip)
         self.skip_event_crops = CheckBox('排除活动作物', plant_card)
         plant_form.addRow(self._field_label('其他设置', plant_card), self.skip_event_crops)
         event_tip = CaptionLabel('废弃参数。若与仓库优先同时开启，将按关闭仓库优先处理。', plant_card)
         event_tip.setWordWrap(True)
         event_tip.setStyleSheet('color: #d97706;')
-        plant_form.addRow(self._field_label('', plant_card), event_tip)
+        plant_form.addRow(event_tip)
 
         env_card, env_form = self._build_group_card(
             content,
@@ -141,7 +143,7 @@ class SettingsPanel(QWidget):
         )
         run_mode_tip.setWordWrap(True)
         run_mode_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), run_mode_tip)
+        env_form.addRow(run_mode_tip)
 
         self.wechat_mouse_guard = CheckBox('微信鼠标防占用', env_card)
         self.wechat_mouse_guard.setEnabled(sys.platform == 'win32')
@@ -152,7 +154,7 @@ class SettingsPanel(QWidget):
         )
         wechat_mouse_guard_tip.setWordWrap(True)
         wechat_mouse_guard_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), wechat_mouse_guard_tip)
+        env_form.addRow(wechat_mouse_guard_tip)
 
         self.shortcut_path = LineEdit(env_card)
         self.shortcut_path.setPlaceholderText('请选择快捷方式')
@@ -169,7 +171,7 @@ class SettingsPanel(QWidget):
         shortcut_tip = CaptionLabel('在小程序窗口上方的菜单中选择添加到桌面，然后在此处选择。', env_card)
         shortcut_tip.setWordWrap(True)
         shortcut_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), shortcut_tip)
+        env_form.addRow(shortcut_tip)
 
         self.shortcut_launch_delay = SpinBox(env_card)
         self.shortcut_launch_delay.setRange(0, 300)
@@ -182,7 +184,7 @@ class SettingsPanel(QWidget):
         )
         shortcut_launch_delay_tip.setWordWrap(True)
         shortcut_launch_delay_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), shortcut_launch_delay_tip)
+        env_form.addRow(shortcut_launch_delay_tip)
 
         self.window_restart_delay = SpinBox(env_card)
         self.window_restart_delay.setRange(0, 300)
@@ -195,7 +197,7 @@ class SettingsPanel(QWidget):
         )
         window_restart_delay_tip.setWordWrap(True)
         window_restart_delay_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), window_restart_delay_tip)
+        env_form.addRow(window_restart_delay_tip)
 
         self.window_repair_delay = SpinBox(env_card)
         self.window_repair_delay.setRange(0, 300)
@@ -208,7 +210,7 @@ class SettingsPanel(QWidget):
         )
         window_repair_delay_tip.setWordWrap(True)
         window_repair_delay_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), window_repair_delay_tip)
+        env_form.addRow(window_repair_delay_tip)
 
         self.prefer_repair_before_restart = CheckBox('优先使用修复', env_card)
         env_form.addRow(self._field_label('异常恢复', env_card), self.prefer_repair_before_restart)
@@ -218,7 +220,7 @@ class SettingsPanel(QWidget):
         )
         prefer_repair_tip.setWordWrap(True)
         prefer_repair_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), prefer_repair_tip)
+        env_form.addRow(prefer_repair_tip)
 
         self.window_launch_wait_timeout = DoubleSpinBox(env_card)
         self.window_launch_wait_timeout.setRange(1.0, 300.0)
@@ -231,7 +233,7 @@ class SettingsPanel(QWidget):
             env_card,
         )
         window_launch_wait_timeout_hint.setStyleSheet('color: #d97706;')
-        env_form.addRow('', window_launch_wait_timeout_hint)
+        env_form.addRow(window_launch_wait_timeout_hint)
 
         self.startup_stabilize_timeout = DoubleSpinBox(env_card)
         self.startup_stabilize_timeout.setRange(5.0, 600.0)
@@ -244,7 +246,7 @@ class SettingsPanel(QWidget):
             env_card,
         )
         startup_stabilize_timeout_hint.setStyleSheet('color: #d97706;')
-        env_form.addRow('', startup_stabilize_timeout_hint)
+        env_form.addRow(startup_stabilize_timeout_hint)
 
         self.keyword = LineEdit(env_card)
         self.keyword.setPlaceholderText('窗口标题关键字')
@@ -295,7 +297,7 @@ class SettingsPanel(QWidget):
         )
         window_position_tip.setWordWrap(True)
         window_position_tip.setStyleSheet('color: #d97706;')
-        env_form.addRow(self._field_label('', env_card), window_position_tip)
+        env_form.addRow(window_position_tip)
 
         notify_card, notify_form = self._build_group_card(
             content,
@@ -403,7 +405,7 @@ class SettingsPanel(QWidget):
         advanced_form.addRow(self._field_label('卡死判定起始', advanced_card), self.stuck_seconds)
         stuck_seconds_hint = CaptionLabel('无有效点击达到该时长后，进入长等待白名单判定。', advanced_card)
         stuck_seconds_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', stuck_seconds_hint)
+        advanced_form.addRow(stuck_seconds_hint)
 
         self.stuck_long_wait_seconds = SpinBox(advanced_card)
         self.stuck_long_wait_seconds.setRange(1, 3600)
@@ -414,7 +416,7 @@ class SettingsPanel(QWidget):
             advanced_card,
         )
         stuck_long_wait_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', stuck_long_wait_hint)
+        advanced_form.addRow(stuck_long_wait_hint)
 
         self.capture_interval = DoubleSpinBox(advanced_card)
         self.capture_interval.setRange(0.0, 5.0)
@@ -424,7 +426,7 @@ class SettingsPanel(QWidget):
         advanced_form.addRow(self._field_label('截图间隔', advanced_card), self.capture_interval)
         capture_interval_hint = CaptionLabel('限制连续截图频率（0 表示不限制，默认 0.3 秒）。', advanced_card)
         capture_interval_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', capture_interval_hint)
+        advanced_form.addRow(capture_interval_hint)
 
         self.planting_stable = DoubleSpinBox(advanced_card)
         self.planting_stable.setRange(0.1, 5.0)
@@ -434,7 +436,7 @@ class SettingsPanel(QWidget):
         advanced_form.addRow(self._field_label('播种稳定时间', advanced_card), self.planting_stable)
         planting_stable_hint = CaptionLabel('如果在边缘地块无法正常播种，请适当增加这个值', advanced_card)
         planting_stable_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', planting_stable_hint)
+        advanced_form.addRow(planting_stable_hint)
         self.planting_stable_timeout = DoubleSpinBox(advanced_card)
         self.planting_stable_timeout.setRange(0.5, 30.0)
         self.planting_stable_timeout.setDecimals(1)
@@ -446,7 +448,7 @@ class SettingsPanel(QWidget):
             advanced_card,
         )
         planting_stable_timeout_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', planting_stable_timeout_hint)
+        advanced_form.addRow(planting_stable_timeout_hint)
         land_swipe_row = QWidget(advanced_card)
         land_swipe_layout = QHBoxLayout(land_swipe_row)
         land_swipe_layout.setContentsMargins(0, 0, 0, 0)
@@ -476,7 +478,7 @@ class SettingsPanel(QWidget):
         advanced_form.addRow(self._field_label('边界滑动次数', advanced_card), land_swipe_row)
         land_swipe_hint = CaptionLabel('将画面滑动到左右边界的次数，土地巡查和升级共用。', advanced_card)
         land_swipe_hint.setStyleSheet('color: #d97706;')
-        advanced_form.addRow('', land_swipe_hint)
+        advanced_form.addRow(land_swipe_hint)
 
         self.debug = CheckBox('启用 Debug 日志', advanced_card)
         advanced_form.addRow(self._field_label('调试日志', advanced_card), self.debug)
@@ -554,6 +556,7 @@ class SettingsPanel(QWidget):
         form.setSpacing(10)
         form.setHorizontalSpacing(0)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
     @staticmethod
     def _field_label(text: str, parent: QWidget) -> CaptionLabel:

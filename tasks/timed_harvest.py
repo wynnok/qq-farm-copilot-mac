@@ -10,11 +10,11 @@ from loguru import logger
 
 from core.base.timer import Timer
 from core.engine.task.registry import TaskResult
-from core.ui.assets import BTN_HARVEST, BTN_HARVEST_POP, BTN_MATURE, BTN_WITHERED
+from core.ui.assets import BTN_HARVEST_POP, BTN_WITHERED
 from core.ui.page import GOTO_MAIN, page_main
 from models.config import normalize_land_maturity_countdown
-from models.farm_state import ActionType
 from tasks.base import TaskBase
+from tasks.main_actions import TaskMainActionsMixin
 
 # 聚合窗口附加缓冲秒数：覆盖窗口尾部成熟地块。
 TIMED_HARVEST_WINDOW_BUFFER_SECONDS = 3
@@ -23,8 +23,8 @@ TIMED_HARVEST_DEADLINE_EXTEND_SECONDS = 5
 TIMED_HARVEST_INITIAL_DEADLINE_MAX_SECONDS = 15
 
 
-class TaskTimedHarvest(TaskBase):
-    """按调度在聚合窗口内持续执行一键收获。"""
+class TaskTimedHarvest(TaskMainActionsMixin, TaskBase):
+    """按调度在聚合窗口内持续执行一键与逐块收获。"""
 
     @staticmethod
     def _pick_regular_group(
@@ -187,19 +187,10 @@ class TaskTimedHarvest(TaskBase):
 
         while 1:
             self.ui.device.screenshot()
-            if self.ui.appear_then_click(BTN_HARVEST, offset=30, interval=0.5, static=False):
-                self.engine._record_stat(ActionType.HARVEST)
-                action_count += 1
-                self.ui.device.click_record_clear()
-                if datetime.now() >= deadline:
-                    deadline = datetime.now() + timedelta(seconds=TIMED_HARVEST_DEADLINE_EXTEND_SECONDS)
-                continue
-            if self.ui.appear_then_click(BTN_MATURE, offset=30, interval=0.5, static=False):
-                self.engine._record_stat(ActionType.HARVEST)
-                action_count += 1
-                self.ui.device.click_record_clear()
-                if datetime.now() >= deadline:
-                    deadline = datetime.now() + timedelta(seconds=TIMED_HARVEST_DEADLINE_EXTEND_SECONDS)
+            harvested = self._run_feature_harvest()
+            if harvested:
+                action_count += harvested
+                deadline = max(deadline, datetime.now() + timedelta(seconds=TIMED_HARVEST_DEADLINE_EXTEND_SECONDS))
                 continue
             if self.ui.appear(BTN_HARVEST_POP, offset=100, threshold=0.6):
                 if not goto_main_click_timer.started() or goto_main_click_timer.reached_and_reset():

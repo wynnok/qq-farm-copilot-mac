@@ -71,34 +71,41 @@ class TaskMainActionsMixin:
     engine: 'LocalBotEngine'
     ui: 'UI'
 
-    def _run_feature_harvest(self) -> str | None:
-        """一键收获"""
-        self.ui.device.screenshot()
-        if not self.ui.appear(BTN_HARVEST, offset=30, static=False) and not self.ui.appear(
-            BTN_MATURE, offset=30, static=False
-        ):
-            return None
-
-        confirm_timer = Timer(0.2, count=1)
+    def _run_feature_harvest(self) -> int:
+        """普通作物一键收获；四格作物按当前成熟标记逐块、多次收获。"""
+        confirm_timer = Timer(3, count=2)
+        manual_click_timer = Timer(1, count=0)
+        timeout = Timer(self.engine.config.safety.stuck_long_wait_seconds, count=0).start()
+        action_count = 0
+        logger.info('收获流程: 开始 | 一键收获与逐块收获')
         while 1:
             self.ui.device.screenshot()
-
-            if self.ui.appear_then_click(BTN_HARVEST, offset=30, interval=1, static=False):
-                self.engine._record_stat(ActionType.HARVEST)
-                continue
-            # if self.ui.appear_then_click(BTN_MATURE, offset=30, interval=1, static=False):
-            #     self.engine._record_stat(ActionType.HARVEST)
-            #     continue
-            if not self.ui.appear(BTN_HARVEST, offset=30, static=False):
-                if not confirm_timer.started():
-                    confirm_timer.start()
-                if confirm_timer.reached():
-                    result = '一键收获'
-                    break
-            else:
+            bulk_ready = self.ui.appear(BTN_HARVEST, offset=30, static=False)
+            mature_point = self.ui.appear_location_in_roi(BTN_MATURE, (0, 350, 540, 800), threshold=0.76)
+            if bulk_ready or mature_point is not None:
+                if timeout.reached():
+                    raise RuntimeError('收获超时：仍存在可收获作物，请检查窗口响应')
                 confirm_timer.clear()
-
-        return result
+                if self.ui.appear_then_click(BTN_HARVEST, offset=30, interval=1, static=False):
+                    self.engine._record_stat(ActionType.HARVEST)
+                    action_count += 1
+                    continue
+                if mature_point is not None and (not manual_click_timer.started() or manual_click_timer.reached()):
+                    x, y = mature_point
+                    if not self.ui.device.click_point(x, y, desc=f'逐块收获({x},{y})', action_type=ActionType.HARVEST):
+                        raise RuntimeError(f'逐块收获点击失败 | 坐标: ({x},{y})')
+                    manual_click_timer.reset()
+                    self.engine._record_stat(ActionType.HARVEST)
+                    action_count += 1
+                continue
+            if action_count == 0:
+                return 0
+            if not confirm_timer.started():
+                confirm_timer.start()
+            if confirm_timer.reached():
+                break
+        logger.info('收获流程: 完成 | 动作次数={}', action_count)
+        return action_count
 
     def _run_feature_maintain_actions(
         self,
@@ -473,7 +480,7 @@ class TaskMainActionsMixin:
             return
         logger.info('自动施肥: 已记录普通化肥施肥时间 | refs={} time={}', plot_refs, now_text)
 
-    def _trigger_feature_harvest_after_fertilize(self) -> str | None:
+    def _trigger_feature_harvest_after_fertilize(self) -> int:
         """施肥后立即调用一次一键收获，将刚施肥成熟的作物收掉。"""
         self.ui.ui_ensure(page_main)
         self.ui.device.click_button(GOTO_MAIN)

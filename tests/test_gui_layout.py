@@ -91,3 +91,44 @@ def test_feature_panel_keeps_checkbox_hint_and_time_text_readable(tmp_path, qt_a
         panel.close()
         panel.deleteLater()
         app.processEvents()
+
+
+@pytest.mark.skipif(
+    sys.platform != 'darwin' or os.environ.get('QQFARM_NATIVE_GUI_TEST') != '1',
+    reason='需要真实 Mac 桌面；设置 QQFARM_NATIVE_GUI_TEST=1',
+)
+def test_settings_panel_keeps_wrapped_hints_and_checkbox_text_readable(tmp_path, qt_app):
+    from PyQt6.QtWidgets import QStyle, QStyleOptionButton
+    from qfluentwidgets import CaptionLabel, CheckBox
+
+    from gui.widgets.settings_panel import SettingsPanel
+    from models.config import AppConfig
+
+    config = AppConfig.load(str(tmp_path / 'config.json'))
+    panel = SettingsPanel(config)
+    try:
+        for width in (1100, 780, 500):
+            panel.resize(width, 700)
+            panel.show()
+            qt_app.processEvents()
+            failures = []
+            for label in panel.findChildren(CaptionLabel):
+                if label.wordWrap() and label.height() < label.heightForWidth(label.width()):
+                    failures.append(
+                        f'{label.text()[:14]}: height {label.height()} < {label.heightForWidth(label.width())}'
+                    )
+            for box in panel.findChildren(CheckBox):
+                option = QStyleOptionButton()
+                option.initFrom(box)
+                option.text = box.text()
+                text_rect = box.style().subElementRect(QStyle.SubElement.SE_CheckBoxContents, option, box)
+                required = box.fontMetrics().horizontalAdvance(box.text())
+                if text_rect.width() < required:
+                    failures.append(f'{box.text()}: text width {text_rect.width()} < {required}')
+                if not box.parentWidget().rect().contains(box.geometry()):
+                    failures.append(f'{box.text()}: clipped by parent')
+            assert not failures, '\n'.join(failures)
+    finally:
+        panel.close()
+        panel.deleteLater()
+        qt_app.processEvents()

@@ -188,7 +188,7 @@
 ## 4. 业务任务逻辑（当前实现）
 
 - `main`
-: 主流程任务，按功能开关顺序执行收获维护、扩建、播种、施肥、升级等动作。
+: 主流程任务，按功能开关顺序执行收获维护、扩建、播种、施肥、升级等动作。收获共用 `TaskMainActionsMixin._run_feature_harvest`：普通作物一键收获，四格作物在地块区域按成熟标记逐块多次点击；点击后重新截图，标记连续消失 3 秒才确认结束，并以 `safety.stuck_long_wait_seconds` 限制总处理时间。返回实际收获动作数，不依赖地块网格定位。
 
 - `main` 在自动播种前会先尝试等级 OCR（可由 `config.planting.level_ocr_enabled` 关闭）。
 
@@ -232,7 +232,7 @@
 : 地块巡查任务（默认关闭，默认 `interval_seconds=1800`）；左右滑动次数来自 `config.planting.land_swipe_right_times/land_swipe_left_times`，分段扫描右到左前 5 列与左到右前 4 列，最后回正，并对每个点击地块执行 OCR 采集；从文本中正则提取 `HH:MM:SS` 回写到 `config.land.plots[].maturity_countdown`，并按该地块实际采样时刻写入 `config.land.plots[].countdown_sync_time`，同时标记 `config.land.plots[].need_upgrade` 与 `config.land.plots[].need_planting`（空地为 `true`）。
 
 - `timed_harvest`
-: 定时收获任务（默认开启，默认 `trigger=daily` + `daily_times=["00:00"]`）；仅在地块巡查启用时生效；地块巡查完成后按每块地 `plots[].countdown_sync_time + plots[].maturity_countdown` 计算成熟时间点，按 `features.aggregation_seconds` 进行聚合切片并更新下次执行时间，任务执行时仅执行一键收获；执行器在 `features.priority_window_seconds` 窗口内会将阻塞任务的 `next_run` 顺延至少 `1` 秒，使 `timed_harvest` 优先执行，避免被前序任务长时间阻塞。
+: 定时收获任务（默认开启，默认 `trigger=daily` + `daily_times=["00:00"]`）；仅在地块巡查启用时生效；地块巡查完成后按每块地 `plots[].countdown_sync_time + plots[].maturity_countdown` 计算成熟时间点，按 `features.aggregation_seconds` 进行聚合切片并更新下次执行时间，任务执行时复用普通作物一键收获与四格作物逐块收获流程，成功收获后延长本轮观察窗口 5 秒；执行器在 `features.priority_window_seconds` 窗口内会将阻塞任务的 `next_run` 顺延至少 `1` 秒，使 `timed_harvest` 优先执行，避免被前序任务长时间阻塞。
 
 - `restart`
 : 定时重启任务（默认关闭，默认 `interval_seconds=14400`）；重启等待使用实例级 `config.window_restart_delay_seconds`（默认 `5` 秒），执行时会校验 `window_shortcut_path` 并重启窗口后收敛回主页面。
